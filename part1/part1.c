@@ -40,6 +40,7 @@ typedef struct process
 } process;
 
 process *processes[4];
+int processCount = 0;
 
 int map(unsigned char pid, unsigned char vaddr, unsigned char val);
 int store(unsigned char pid, unsigned char vaddr, unsigned char val);
@@ -51,40 +52,94 @@ void init()
     {
         if (processes[i] == NULL)
         {
-            process* proc = (process*)malloc(sizeof(process));
-            proc->pid = 0;
+            process *proc = (process *)malloc(sizeof(process));
+            proc->pid = -1;
             proc->address = 0;
             proc->allocated = 0;
             processes[i] = proc;
-            pfnList[i] = 0;
+            pfnList[i] = -1;
         }
     }
 }
 
-int locatePFN()
+// int locatePFN()
+// {
+//     for (int i = 1; i < 4; i++)
+//     {
+//         if (pfnList[i] == -1)
+//         {
+//             pfnList[i] = 1;
+//             return i * 16;
+//         }
+//     }
+//     return -1;
+// }
+
+int locatePFN(unsigned char vpn) {
+    return vpn+1;
+}
+
+int addPTE(unsigned char vpn, unsigned char pfn, unsigned char prot)
 {
-    for (int i = 0; i < 4; i++)
+    if (processCount == 1)
     {
-        if (pfnList[i] == 0)
+        for (int i = 0; i < 16; i = i + 4)
         {
-            pfnList[i] = 1;
-            return i;
+            if (memory[i + 2] == 0)
+            {
+                memory[i] = vpn;
+                memory[i + 1] = pfn;
+                memory[i + 2] = 1;
+                memory[i + 3] = prot;
+                return 0;
+            }
+        }
+    }
+    else if (processCount == 2)
+    {
+        for (int i = 32; i < 48; i = i + 4)
+        {
+            if (memory[i + 2] == 0)
+            {
+                memory[i] = vpn;
+                memory[i + 1] = pfn;
+                memory[i + 2] = 1;
+                memory[i + 3] = prot;
+                return 0;
+            }
         }
     }
     return -1;
 }
 
-int addPTE(unsigned char vpn, unsigned char pfn, unsigned char prot)
+int findVPN(unsigned char vpn,int offset, unsigned char value)
 {
-    for (int i = 0; i < 16; i = i + 4)
+    int paddr = 0;
+    unsigned char pfn = 0;
+    if (processCount == 1)
     {
-        if (memory[i + 2] == 0)
+        for (int i = 0; i < 16; i = i + 4)
         {
-            memory[i] = vpn;
-            memory[i + 1] = pfn;
-            memory[i + 2] = 1;
-            memory[i + 3] = prot;
-            return 0;
+            if (memory[i] == vpn && memory[i + 3] == 1) // if vpn is there and is writable
+            {
+                pfn = memory[i + 1];
+                paddr = pfn*16+offset;
+                memory[paddr] = value;
+                return paddr;
+            }
+        }
+    }
+    else if (processCount == 2)
+    {
+        for (int i = 32; i < 48; i = i + 4)
+        {
+            if (memory[i] == vpn && memory[i + 3] == 1)
+            {
+                pfn = memory[i + 1];
+                paddr = pfn + 48 + offset;
+                memory[paddr] = value;
+                return paddr;
+            }
         }
     }
     return -1;
@@ -100,11 +155,16 @@ int map(unsigned char pid, unsigned char vaddr, unsigned char val)
     printf("Finding valid process\n");
     for (int i = 0; i < 4; i++)
     {
-        if (processes[i]->allocated == 0)
+        if(processes[i]->pid == pid) {
+            break;
+        }
+
+        if (processes[i]->allocated == 0 && processes[i]->pid != pid)
         {
             processes[i]->pid = pid;
             processes[i]->address = vaddr;
             processes[i]->allocated = 1;
+            processCount++;
             break;
         }
         else
@@ -127,11 +187,9 @@ int map(unsigned char pid, unsigned char vaddr, unsigned char val)
         vpn++;
     }
     printf("Locating valid PFN\n");
-    pfn = locatePFN();
+    pfn = locatePFN(vpn);
     int added = addPTE(vpn, pfn, prot);
 
-    // Put page table for PID 0 into physical frame 0
-    // Mapped virtual address 0 (page 0) into physical frame 1
     if (added == 0)
     {
         printf("Put page table for PID %d into physical frame %d\n", pid, pfn);
@@ -143,6 +201,44 @@ int map(unsigned char pid, unsigned char vaddr, unsigned char val)
     }
 
     return 0;
+}
+
+int findOffset(unsigned char vaddr) {
+    if(vaddr < 16) {
+        return vaddr;
+    } else if(vaddr >= 16 && vaddr < 32) {
+        return vaddr-16;
+    } else if(vaddr >= 32 && vaddr < 48) {
+        return vaddr-32;
+    } else {
+        return vaddr-48;
+    }
+}
+
+int store(unsigned char pid, unsigned char vaddr, unsigned char val)
+{
+    unsigned char vpn = 0;
+    unsigned char v = vaddr;
+    int offset = findOffset(v);
+    while (vaddr > 16)
+    {
+        vaddr = vaddr - 16;
+        vpn++;
+    }
+
+    if (vaddr == 16)
+    {
+        vpn++;
+    }
+    int stored = findVPN(vpn,offset,val);
+    if (stored > -1)
+    {
+        printf("Stored value %d at virtual address %d (physical address %d)\n", val, v, stored);
+    }
+    else
+    {
+        return -1;
+    }
 }
 
 int main()
@@ -169,12 +265,9 @@ int main()
             }
         }
         token = strtok(str, ",");
-        printf("Token %d %d %d %d \n", token[0], token[1], token[2], token[3]);
         pid = token[0];
         pid -= 48;
-        printf("I m here\n");
         token = strtok(NULL, ",");
-        printf("Char is %d\n", token[0]);
         if (token[0] == 'm')
         {
             choice = 0;
@@ -211,14 +304,13 @@ int main()
         switch (choice)
         {
         case 0:
-            printf("I am here at map\n");
             map(pid, vaddr, val);
             //print out
             break;
-        // case 1:
-        //     store(pid, vaddr, val);
-        //     //print out
-        //     break;
+        case 1:
+            store(pid, vaddr, val);
+            //print out
+            break;
         // case 2:
         //     load(pid, vaddr, val);
         //     break;
