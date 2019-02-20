@@ -10,7 +10,6 @@
 #define WRITEBIT 1 // This will used if a page is writable
 //#define PTE 4       //size of a page table entry
 #define NUMPAGES 4 //total number of pages
-#define VPN 0      //virtual page number byte offset in a PTE
 //#define PFN 1       //PFN byte offset in a PTE
 #define PROTECTION 2 //protection bits offset in a PTE
 #define VALID 3      //VALID bits offset in a PTE
@@ -31,7 +30,6 @@ int pfnList[4];
  * Each user given virtual address corresponds to VPN
  * Example: If user gives 18, VPN will be 1. If user gives 10, VPN will be 0.
  */
-
 typedef struct process
 {
     int pid;
@@ -39,15 +37,55 @@ typedef struct process
     int allocated;
 } process;
 
-process *processes[4];
-int processCount = 0;
 
 int map(unsigned char pid, unsigned char vaddr, unsigned char val);
 int store(unsigned char pid, unsigned char vaddr, unsigned char val);
 int load(unsigned char pid, unsigned char vaddr, unsigned char val);
 
+typedef struct PageTableEntry{
+	int VPN;
+	int PFN;
+	int allocated;
+	int protection;
+} PageTableEntry;
+
+typedef struct Process{
+	//int pid; is the index within the masterStruct
+	int isPageTableInMemory; //PPN if page table is in memory -1 otherwise
+	int *isPageInMemory[4]; //PPN if page is in memory, -1 otherwise
+	PageTableEntry *PTE[4]; //this is page table
+	int page0[16];
+	int page1[16];
+	int page2[16];
+	int page3[16];
+} Process;
+
+typedef struct masterStruct
+{
+	Process *process[4];
+} masterStruct;
+
+process *processes[4];
+masterStruct *theMasterStruct;
+int processCount = 0;
+int nextFreePage;
+
 void init()
 {
+	theMasterStruct = (masterStruct*) malloc(sizeof(masterStruct));
+	for (int i = 0; i < 4; i++) { //for each Process, malloc
+		Process *tempProcess = (Process*)malloc(sizeof(Process));
+		(*theMasterStruct).process[i] = tempProcess;
+		for (int j = 0; j < 4; j++) { //for each PageTableEntry of each process, malloc
+			tempProcess->PTE[j] = malloc(sizeof(PageTableEntry));
+			(*tempProcess).PTE[j]->VPN = -1;
+			(*tempProcess).PTE[j]->PFN = -1;
+			(*tempProcess).PTE[j]->allocated = -1;
+			(*tempProcess).PTE[j]->protection = -1;
+		}
+	}
+	nextFreePage = 0; //start off round robin PF0
+	/*
     for (int i = 0; i < 4; i++)
     {
         if (processes[i] == NULL)
@@ -59,7 +97,7 @@ void init()
             processes[i] = proc;
             pfnList[i] = -1;
         }
-    }
+    }*/
 }
 
 // int locatePFN()
@@ -275,14 +313,29 @@ int load(unsigned char pid, unsigned char vaddr, unsigned char val)
 	*/
 }
 
+//returns the number of the next free page
+//and moves the nextFreePage counter by 1
+int getNextFreePage() {
+	//example, if the nextFreePage is 2, return 2, but set the nextFreePage to three.
+	if (nextFreePage == 3) {
+		nextFreePage = 0;
+		return 3;
+	}
+	else {
+		nextFreePage++;
+		return nextFreePage-1 ;
+	}
+}
 
 int main()
 {
-unsigned char pid, choice = -1, vaddr, val = -1;
+//unsigned char pid, choice = -1, vaddr, val = -1;
     char str[20];
     init();
+	/*
     while (1)
     {
+		
         char *token;
         while ( strlen(str) < 10 )
         {
@@ -348,13 +401,69 @@ unsigned char pid, choice = -1, vaddr, val = -1;
         default:
             printf("Error input was not proper try again\n");
         }
-        /*for(int i =0; i < MAXMEM;i++){
-			if(i%16==0 && i>0){
-				printf("| ");
-			}
-			printf("%d ",mem[i]);
-		}*/
         printf("\n");
     }
-    return 0;
+	*/
+    
+	
+	// example values
+	int pid = 0;
+	int vaddr = 7;
+	int tempVPN = 7/16;
+	int offset = 7%16;
+	int value = 100;
+	int protection = 1;
+	
+	//try mapping a page for test
+	int gottenPPage = getNextFreePage();
+	theMasterStruct->process[0]->isPageTableInMemory = gottenPPage; //starts at 0 goes to 1
+	printf("%d qq\n", theMasterStruct->process[0]->isPageTableInMemory);
+	
+	theMasterStruct->process[pid]->PTE[tempVPN] -> VPN =  vaddr;
+	theMasterStruct->process[pid]->PTE[tempVPN] -> PFN = gottenPPage;
+	theMasterStruct->process[pid]->PTE[tempVPN] -> allocated = 1;
+	theMasterStruct->process[pid]->PTE[tempVPN] -> protection = 1;	
+	
+	//try storing a value
+	if (tempVPN == 0) {
+		theMasterStruct->process[pid]->page0[offset] = value;
+	}
+	if (tempVPN == 1) {
+		theMasterStruct->process[pid]->page1[offset] = value;
+	}
+	if (tempVPN == 2) {
+		theMasterStruct->process[pid]->page2[offset] = value;
+	}
+	if (tempVPN == 3) {
+		theMasterStruct->process[pid]->page3[offset] = value;
+	}
+	
+	//try loading a value
+	int load = theMasterStruct->process[pid]->page0[offset];
+	printf("%d hehehehe\n", load);
+	
+	/*typedef struct PageTableEntry{
+		int VPN;
+		int PFN;
+		int allocated;
+		int protection;
+	} PageTableEntry;
+
+	typedef struct Process{
+		//int pid; is the index within the masterStruct
+		int isPageTableInMemory; //PPN if page table is in memory -1 otherwise
+		int *isPageInMemory[4]; //PPN if page is in memory, -1 otherwise
+		PageTableEntry *PTE[4]; //this is page table
+		int page0[16];
+		int page1[16];
+		int page2[16];
+		int page3[16];
+	} Process;
+
+	typedef struct masterStruct
+	{
+		Process *process[4];
+	} masterStruct; */
+	
+	return 0;
 }
