@@ -241,21 +241,50 @@ int store(unsigned char pid, unsigned char vaddr, unsigned char val)
     }
 }
 
+int load(unsigned char pid, unsigned char vaddr, unsigned char val)
+{
+	int tempPage = vaddr/16;
+	int tempOffset = vaddr%16;
+	int calculatedPhysAddr = (1+tempPage)*16+tempOffset;
+	int returnVal = memory[calculatedPhysAddr];
+	printf("The value %d is virtual address %d (physical address %d)\n", returnVal, vaddr, calculatedPhysAddr);
+	return returnVal;
+	/*
+    unsigned char vpn = 0;
+    unsigned char v = vaddr;
+    int offset = findOffset(v);
+    while (vaddr > 16)
+    {
+        vaddr = vaddr - 16;
+        vpn++;
+    }
+
+    if (vaddr == 16)
+    {
+        vpn++;
+    }
+    int stored = findVPN(vpn,offset,val);
+    if (stored > -1)
+    {
+        printf("Stored value %d at virtual address %d (physical address %d)\n", val, v, stored);
+    }
+    else
+    {
+        return -1;
+    }
+	*/
+}
+
+
 int main()
 {
-    unsigned char pid, choice = -1, vaddr, val = -1;
+unsigned char pid, choice = -1, vaddr, val = -1;
     char str[20];
     init();
     while (1)
     {
         char *token;
-        printf("Instruction?: ");
-        if (fgets(str, 20, stdin) == NULL)
-        {
-            printf("\n");
-            return 0;
-        }
-        while (str[0] == '\n' || str[0] == '\0' || str[1] == '\0' || str[1] == '\n')
+        while ( strlen(str) < 10 )
         {
             printf("Instruction?: ");
             if (fgets(str, 20, stdin) == NULL)
@@ -311,9 +340,9 @@ int main()
             store(pid, vaddr, val);
             //print out
             break;
-        // case 2:
-        //     load(pid, vaddr, val);
-        //     break;
+        case 2:
+            load(pid, vaddr, val);
+            break;
         // case 3:
         //     break;
         default:
