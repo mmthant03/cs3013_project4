@@ -80,33 +80,7 @@ void init()
 	
 }
 
-// int locatePFN()
-// {
-//     for (int i = 1; i < 4; i++)
-//     {
-//         if (pfnList[i] == -1)
-//         {
-//             pfnList[i] = 1;
-//             return i * 16;
-//         }
-//     }
-//     return -1;
-// }
 
-int map(unsigned char pid, unsigned char vaddr, unsigned char val)
-{
-    return 0;
-}
-
-int store(unsigned char pid, unsigned char vaddr, unsigned char val)
-{
-    return -1;
-}
-
-int load(unsigned char pid, unsigned char vaddr, unsigned char val)
-{
-	return 0;
-}
 
 //returns the number of the next free page
 //and moves the nextFreePage counter by 1
@@ -141,6 +115,9 @@ void printStruct() {
 			PageTableEntry *tempPTE = theMasterStruct->process[i]->PTE[k];
 			printf("		VPN %d, PFN %d, allocated %d, protection %d\n", tempPTE->VPN
 			, tempPTE->PFN, tempPTE->allocated, tempPTE->protection);
+		}
+		for (int l = 0; l < 4; l++) {
+			
 		}
 	}
 }
@@ -187,18 +164,22 @@ int storeFromStructToMemory() {
 		}
 		
 		for (int k = 0; k < 4; k++) {//load the pages
-			if (currentProcess->isPageInMemory[k] != -1) {//if page is in memory
+			if (currentProcess->isPageInMemory[k] != -1) {//ifpage is in memory
 				printf("got to er for %d %d\n", k, currentProcess->isPageInMemory[k]);
 				printf("%d\n", currentProcess->page[k][9]);
 				printf("%d\n", memory[16*(currentProcess->isPageInMemory[k])] );
+
 				
-				int *tempInt = malloc (sizeof(int));
-				*tempInt = 100;
-				memcpy ( &(memory[16*currentProcess->isPageInMemory[k]]) , tempInt , 16);
+				//convert to unsigned cha
+				unsigned char tempCharArray[16];//= malloc(16*sizeof(unsigned char));
+				for (int v = 0; v < 16; v++) { //convert the ints to unsigned chars
+					tempCharArray[v] = currentProcess->page[k][v];
+				}
+				
+				//copy the array to memory
+				memcpy ( &(memory[16*currentProcess->isPageInMemory[k]]) , tempCharArray , 16);
 				printf("%d\n", memory[16*(currentProcess->isPageInMemory[k])] );
 				
-				int *tempInt2 = memcpy( tempInt , &(memory[16*currentProcess->isPageInMemory[k]]) , 16);
-				printf("TEMP 22ER2 %d\n", *tempInt2);
 			}
 		}
 		
@@ -230,27 +211,77 @@ int storeFromStructToMemory() {
 	} masterStruct; */
 }
 
-int main()
-{
-//unsigned char pid, choice = -1, vaddr, val = -1;
-    char str[20];
-    init();
-    
+int storeFromMemorytoStruct() {
+	return 0;
 	
-	// example values
-	int pid = 0;
-	int vaddr = 41;
+	//theMasterStruct
+	//unsigned char memory[MEMORY];
+	//unsigned char fileMemory[1000];
+	
+	printf("storeFromMemoryToStruct call\n");
+	for (int i = 0; i < 4; i++) { //for each process
+		printf("got to the loop %d\n", i);
+		int pid = i;
+		Process *currentProcess = theMasterStruct->process[i];
+		int isPageTableInMemory = currentProcess->isPageTableInMemory;
+		
+		if (isPageTableInMemory != -1) { //use register values to get the page tables into active
+			memcpy (  currentProcess->PTE ,  &(memory[16*isPageTableInMemory]) , 16 );
+			//memcpy ( currentProcess->PTE , &(memory[isPageTableInMemory]) , 16 );
+			//printf ("%s\n", memory[isPageTableInMemory]);
+		}
+		
+		for (int k = 0; k < 4; k++) {//load the pages
+			if (currentProcess->isPageInMemory[k] != -1) {//ifpage is in memory
+				printf("got to er for %d %d\n", k, currentProcess->isPageInMemory[k]);
+				printf("%d\n", currentProcess->page[k][9]);
+				printf("%d\n", memory[16*(currentProcess->isPageInMemory[k])] );
+
+				
+				//convert to unsigned cha
+				unsigned char tempCharArray[16];//= malloc(16*sizeof(unsigned char));
+				for (int v = 0; v < 16; v++) { //convert the ints to unsigned chars
+					tempCharArray[v] = currentProcess->page[k][v];
+				}
+				
+				//copy the array to memory
+				memcpy ( &(memory[16*currentProcess->isPageInMemory[k]]) , tempCharArray , 16);
+				printf("%d\n", memory[16*(currentProcess->isPageInMemory[k])] );
+				
+			}
+		}
+	}
+
+}
+
+int map(unsigned char pidTemp, unsigned char vaddrTemp, unsigned char val)
+{
+	printf("Finding valid process\n");
+	/**
+	 * There are three cases here
+	 * 1) Process does not exist whatsoever
+			- > check if you can get two pages, that is all we need
+	 * 2) Process exists, but the page we are looking for is not allocated
+			- > check if you can get one page, store it in there
+	 * 3) Process exists, and the page we are looking for is allocated already
+			- > update permissions
+	 *
+	*/
+	//int processExists = checkProcessExists(pid); //run helper function to see if this process exists
+	
+	int pid = pidTemp;
+	int vaddr = vaddrTemp;
 	int tempVPN = vaddr/16;
 	int PPN = vaddr/16;
 	int offset = vaddr%16;
-	int value = 100;
-	int protection = 1;
+	int value = val;
+	int protection = val;
 	
-	//try mapping a page for test
+		//try mapping a page for test
 	//start with page table
 	int gottenPPage = getNextFreePage(); //0
-	theMasterStruct->process[0]->isPageTableInMemory = gottenPPage; //page table goes in 1st gotten pg
-	printf("page table at physical fr %d\n", theMasterStruct->process[0]->isPageTableInMemory); 
+	theMasterStruct->process[tempVPN]->isPageTableInMemory = gottenPPage; //page table goes in 1st gotten pg
+	printf("page table at physical fr %d\n", theMasterStruct->process[tempVPN]->isPageTableInMemory); 
 
 	//get the page for datum
 	int gottenPPage2 = getNextFreePage(); //1
@@ -258,19 +289,147 @@ int main()
 	theMasterStruct->process[pid]->PTE[tempVPN] -> VPN =  tempVPN; //PTE's VPN is 2
 	theMasterStruct->process[pid]->PTE[tempVPN] -> PFN = gottenPPage2; //PTE's PFN = 0
 	theMasterStruct->process[pid]->PTE[tempVPN] -> allocated = 1;
-	theMasterStruct->process[pid]->PTE[tempVPN] -> protection = 1;	
+	theMasterStruct->process[pid]->PTE[tempVPN] -> protection = protection;	
 	
+    return 0;
+}
+
+int store(unsigned char pidTemp, unsigned char vaddrTemp, unsigned char val)
+{
+	int pid = pidTemp;
+	int vaddr = vaddrTemp;
+	int tempVPN = vaddr/16;
+	int PPN = vaddr/16;
+	int offset = vaddr%16;
+	int value = val;
+	int protection = val;
 	
 	//try storing a value
 	theMasterStruct->process[pid]->page[tempVPN][offset] = value;
 	//theMasterStruct->process[pid]->isPageInMemory[PPN] = gottenPPage;
+    return -1;
+}
+
+int load(unsigned char pidTemp, unsigned char vaddrTemp, unsigned char val)
+{
+	int pid = pidTemp;
+	int vaddr = vaddrTemp;
+	int tempVPN = vaddr/16;
+	int PPN = vaddr/16;
+	int offset = vaddr%16;
+	int value = val;
+	int protection = val;
 	
-	//try loading a value
+		//try loading a value
 	int load = theMasterStruct->process[pid]->page[tempVPN][offset];
 	printf("%d hehehehe\n", load);
 	
-	storeFromStructToMemory();
 	
+	return 0;
+}
+
+int main()
+{
+//unsigned char pid, choice = -1, vaddr, val = -1;
+	unsigned char pid, choice = -1, vaddr, val = -1;
+    char str[20];
+    init();
+
+    while (1) //process commands
+    {
+        char *token;
+        while ( strlen(str) < 10 )
+        {
+            printf("Instruction?: ");
+            if (fgets(str, 20, stdin) == NULL)
+            {
+                printf("\n");
+                return 0;
+            }
+        }
+        token = strtok(str, ",");
+        pid = token[0];
+        pid -= 48;
+        token = strtok(NULL, ",");
+        if (token[0] == 'm')
+        {
+            choice = 0;
+        }
+        else if (token[0] == 's')
+        {
+            choice = 1;
+        }
+        else if (token[0] == 'l')
+        {
+            choice = 2;
+        }
+        token = strtok(NULL, ",");
+        vaddr = atoi(token);
+        token = strtok(NULL, ",");
+        val = atoi(token);
+        token = NULL;
+        printf("\n");
+        if (pid > 3 || pid < 0)
+        {
+            printf("Error process id is not valid, try again \n");
+            choice = 3;
+        }
+        if (vaddr < 0 || vaddr > 63)
+        {
+            printf("Virtual address is not valid, try again \n");
+            choice = 3;
+        }
+        if (val < 0 || val > 255)
+        {
+            printf("Incorrect value, try again");
+            choice = 3;
+        }
+        switch (choice)
+        {
+        case 0:
+			printf("reached MAP, %d, %d, %d\n", pid, vaddr, val);
+            map(pid, vaddr, val);
+            //print out
+            break;
+        case 1:
+			printf("reached STORE, %d, %d, %d\n", pid, vaddr, val);
+            store(pid, vaddr, val);
+            //print out
+            break;
+        case 2:
+			printf("reached LOAD, %d, %d, %d\n", pid, vaddr, val);
+            load(pid, vaddr, val);
+            break;
+        // case 3:
+        //     break;
+        default:
+            printf("Error input was not proper try again\n");
+        }
+		
+		
+		//===============================
+	
+	// example values
+	/*
+	int pid = 0;
+	int vaddr = 41;
+	int tempVPN = vaddr/16;
+	int PPN = vaddr/16;
+	int offset = vaddr%16;
+	int value1 = 1;
+	int value2 = 100;
+	int value3 = 0;
+	int protection = 1;
+	
+	map(pid, vaddr, value1);
+	
+	store(pid, vaddr, value2);
+	
+	load(pid, vaddr, value3);
+	*/
+		printf("STOREING\n");
+		storeFromStructToMemory();
+	}
 	/*typedef struct PageTableEntry{
 		int VPN;
 		int PFN;
