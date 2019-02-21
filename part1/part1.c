@@ -158,6 +158,7 @@ int storeFromStructToMemory() {
 		Process *currentProcess = theMasterStruct->process[i];
 		int isPageTableInMemory = currentProcess->isPageTableInMemory;
 		
+		//copy page table over
 		if (isPageTableInMemory != -1) { //copy the page table to memory[] if needed
 		
 			//start by copying the page table over
@@ -175,6 +176,7 @@ int storeFromStructToMemory() {
 			//printf ("%s\n", memory[isPageTableInMemory]);
 		}
 		
+		//pages
 		for (int k = 0; k < 4; k++) {//load the pages
 			if (currentProcess->isPageInMemory[k] != -1) {//ifpage is in memory
 				printf("got to er for %d %d\n", k, currentProcess->isPageInMemory[k]);
