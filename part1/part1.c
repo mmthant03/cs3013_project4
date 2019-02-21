@@ -64,15 +64,16 @@ void init()
 	for (int i = 0; i < 4; i++) { //for each Process, malloc
 		Process *tempProcess = (Process*)malloc(sizeof(Process));
 		(*theMasterStruct).process[i] = tempProcess;
+		tempProcess->isPageTableInMemory = -1;
+		for (int j = 0; j < 4; j++) {//for each pageInMemory, set -1 for start
+			tempProcess->isPageInMemory[j] = -1;
+		}
 		for (int j = 0; j < 4; j++) { //for each PageTableEntry of each process, malloc
 			tempProcess->PTE[j] = malloc(sizeof(PageTableEntry));
 			(*tempProcess).PTE[j]->VPN = -1;
 			(*tempProcess).PTE[j]->PFN = -1;
 			(*tempProcess).PTE[j]->allocated = -1;
 			(*tempProcess).PTE[j]->protection = -1;
-		}
-		for (int j = 0; j < 4; j++) {//for each pageInMemory, set -1 for start
-			tempProcess->isPageInMemory[j] = -1;
 		}
 		
 	}
@@ -105,7 +106,7 @@ void printMemory() {
 	
 void printStruct() {
 	printf("printing struct start\n");
-	for (int i = 0; i < 1; i++) {
+	for (int i = 0; i < 4; i++) {
 		printf("	Printing process %d\n", i);
 		printf("	isPageTableInMemory = %d\n", theMasterStruct->process[i]->isPageTableInMemory);
 		for (int j = 0; j < 4; j++) {
@@ -158,7 +159,18 @@ int storeFromStructToMemory() {
 		int isPageTableInMemory = currentProcess->isPageTableInMemory;
 		
 		if (isPageTableInMemory != -1) { //copy the page table to memory[] if needed
-			memcpy ( &(memory[16*isPageTableInMemory]) , currentProcess->PTE , 16 );
+		
+			//start by copying the page table over
+			unsigned char tempPageTable[16];
+			for (int g = 0; g < 4; g++) {//for each PTE, copy it to the temppage
+				PageTableEntry *localPTE = currentProcess->PTE[g];
+				tempPageTable[4*g+0] = localPTE->VPN;
+				printf("%d just checking\n", localPTE->VPN);
+				tempPageTable[4*g+1] = localPTE->PFN;
+				tempPageTable[4*g+2] = localPTE->allocated;
+				tempPageTable[4*g+3] = localPTE->protection;
+			}
+			memcpy ( &(memory[16*isPageTableInMemory]) , tempPageTable, 16);//currentProcess->PTE , 16 );
 			//memcpy ( currentProcess->PTE , &(memory[isPageTableInMemory]) , 16 );
 			//printf ("%s\n", memory[isPageTableInMemory]);
 		}
