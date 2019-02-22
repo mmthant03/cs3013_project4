@@ -3,22 +3,13 @@
 #include <unistd.h>
 #include <string.h>
 
-//MACROS
-#define PAGE 16    // page of 16 bytes
-#define VMEM 64    // virtual memory
-#define WRITEBIT 1 // This will used if a page is writable
-//#define PTE 4       //size of a page table entry
-#define NUMPAGES 4 //total number of pages
-//#define PFN 1       //PFN byte offset in a PTE
-#define PROTECTION 2 //protection bits offset in a PTE
-#define VALID 3      //VALID bits offset in a PTE
 
 // 64 bytes of memory
 unsigned char memory[64];
 unsigned char fileMemory[1000];
-
-// Search for free undeclared PFN, 0 means free unallocated, 1 means allocated
-int pfnList[4];
+int map(unsigned char pid, unsigned char vaddr, unsigned char val);
+int store(unsigned char pid, unsigned char vaddr, unsigned char val);
+int load(unsigned char pid, unsigned char vaddr, unsigned char val);
 
 /**Page table
  * The first 16 bytes or Memory are going to be Page Table Entries
@@ -31,10 +22,6 @@ int pfnList[4];
  * Example: If user gives 18, VPN will be 1. If user gives 10, VPN will be 0.
  */
 
-int map(unsigned char pid, unsigned char vaddr, unsigned char val);
-int store(unsigned char pid, unsigned char vaddr, unsigned char val);
-int load(unsigned char pid, unsigned char vaddr, unsigned char val);
-
 typedef struct PageTableEntry{
 	int VPN;
 	int PFN;
@@ -44,8 +31,6 @@ typedef struct PageTableEntry{
 
 typedef struct Process{
 	//int pid; is the index within the masterStruct
-	int isPageTableInMemory; //PPN if page table is in memory -1 otherwise
-	int isPageInMemory[4]; //PPN if page is in memory, -1 otherwise
 	PageTableEntry *PTE[4]; //this is page table
 	int page[16][4];
 } Process;
@@ -55,6 +40,9 @@ typedef struct masterStruct
 	Process *process[4];
 	int isCreated[4];
 } masterStruct;
+
+int isPageTableInMemory[4];//PPN if page is in memory, -1 otherwise
+
 
 masterStruct *theMasterStruct;
 int nextFreePage;
@@ -67,10 +55,7 @@ void init()
 		theMasterStruct->process[i] = tempProcess;
 		theMasterStruct->isCreated[i] = -1;
 		
-		tempProcess->isPageTableInMemory = -1;
-		for (int j = 0; j < 4; j++) {//for each pageInMemory, set -1 for start
-			tempProcess->isPageInMemory[j] = -1;
-		}
+		isPageTableInMemory[i] = -1;
 		for (int j = 0; j < 4; j++) { //for each PageTableEntry of each process, malloc
 			tempProcess->PTE[j] = malloc(sizeof(PageTableEntry));
 			(*tempProcess).PTE[j]->VPN = -1;
@@ -78,13 +63,40 @@ void init()
 			(*tempProcess).PTE[j]->allocated = -1;
 			(*tempProcess).PTE[j]->protection = -1;
 		}
-		
 	}
 	nextFreePage = 0; //start off round robin PF0
 	
 }
 
-
+/**
+ * There are three cases here
+ * 1) Process does not exist whatsoever
+		- > check if you can get two pages, that is all we need
+ * 2) Process exists, but the page we are looking for is not allocated
+		- > check if you can get one page, store it in there
+ * 3) Process exists, and the page we are looking for is allocated already
+		- > update permissions
+ * return the value appropriate
+ */
+int processExists(int pid, int vaddr, masterStruct* theMasterStruct) {
+		
+	int VPN = vaddr/16;
+	int isCreated = theMasterStruct->isCreated[pid];
+	int isAllocated = theMasterStruct->process[pid]->PTE[VPN]->allocated;		
+	
+	if (isCreated == -1) {
+		return 1; //process does not exist
+	}
+	else {
+		if (isAllocated == -1) {
+			return 2; //process exists but this page is not allocated
+		}
+		else {
+			return 3; //process exists but this page is allocated
+		}
+		
+	}
+}
 
 //returns the number of the next free page
 //and moves the nextFreePage counter by 1
@@ -106,14 +118,21 @@ void printMemory() {
 		printf("%d %d\n", i, memory[i]);
 	}
 }
+
+void printFileMemory() {
+	printf("starting print [file]\n");
+	for (int i = 0; i <340; i++) {
+		printf("%d %d\n", i, fileMemory[i]);
+	}
+}
 	
 void printStruct() {
 	printf("printing struct start\n");
 	for (int i = 0; i < 4; i++) {
 		printf("	Printing process %d\n", i);
-		printf("	isPageTableInMemory = %d\n", theMasterStruct->process[i]->isPageTableInMemory);
+		printf("	isPageTableInMemory = %d\n", isPageTableInMemory[i]);
 		for (int j = 0; j < 4; j++) {
-			printf("		process %d, page %d is in memory %d\n", i, j, theMasterStruct->process[i]->isPageInMemory[j]);
+			printf("		process %d, page %d is in memory %d\n", i, j, theMasterStruct->process[i]->PTE[j]->PFN);
 		}
 		for (int k = 0; k < 4; k++) {//for each pte
 			PageTableEntry *tempPTE = theMasterStruct->process[i]->PTE[k];
@@ -136,8 +155,6 @@ void printStruct() {
 
 	typedef struct Process{
 		//int pid; is the index within the masterStruct
-		int isPageTableInMemory; //PPN if page table is in memory -1 otherwise
-		int isPageInMemory[4]; //PPN if page is in memory, -1 otherwise
 		PageTableEntry *PTE[4]; //this is page table
 		int page[16][4];
 	} Process;
@@ -160,10 +177,9 @@ int storeFromStructToMemory() {
 		printf("got to the loop %d\n", i);
 		int pid = i;
 		Process *currentProcess = theMasterStruct->process[i];
-		int isPageTableInMemory = currentProcess->isPageTableInMemory;
 		
 		//copy page table over
-		if (isPageTableInMemory != -1) { //copy the page table to memory[] if needed
+		if (isPageTableInMemory[i] != -1) { //copy the page table to memory[] if needed
 		
 			//start by copying the page table over
 			unsigned char tempPageTable[16];
@@ -175,40 +191,110 @@ int storeFromStructToMemory() {
 				tempPageTable[4*g+2] = localPTE->allocated;
 				tempPageTable[4*g+3] = localPTE->protection;
 			}
-			memcpy ( &(memory[16*isPageTableInMemory]) , tempPageTable, 16);//currentProcess->PTE , 16 );
-			//memcpy ( currentProcess->PTE , &(memory[isPageTableInMemory]) , 16 );
-			//printf ("%s\n", memory[isPageTableInMemory]);
+			memcpy ( &(memory[16*isPageTableInMemory[i]]) , tempPageTable, 16);//currentProcess->PTE , 16 );
 		}
 		
 		//pages
 		for (int k = 0; k < 4; k++) {//load the pages
-			if (currentProcess->isPageInMemory[k] != -1) {//ifpage is in memory
-				printf("got to er for %d %d\n", k, currentProcess->isPageInMemory[k]);
+			printf("%d WTF IS THE PFMN\n", currentProcess->PTE[k]->PFN);
+			if (currentProcess->PTE[k]->PFN != -1) {//ifpage is in memory
+				printf("got to er for %d %d\n", k, currentProcess->PTE[k]->PFN);
 				printf("%d\n", currentProcess->page[k][9]);
-				printf("%d\n", memory[16*(currentProcess->isPageInMemory[k])] );
+				printf("%d\n", memory[16*(currentProcess->PTE[k]->PFN)] );
 
 				
 				//convert to unsigned cha
-				unsigned char tempCharArray[16];//= malloc(16*sizeof(unsigned char));
+				unsigned char tempCharArray[16];
 				for (int v = 0; v < 16; v++) { //convert the ints to unsigned chars
 					tempCharArray[v] = currentProcess->page[k][v];
 				}
 				
 				//copy the array to memory
-				memcpy ( &(memory[16*currentProcess->isPageInMemory[k]]) , tempCharArray , 16);
-				printf("%d\n", memory[16*(currentProcess->isPageInMemory[k])] );
+				memcpy ( &(memory[16*currentProcess->PTE[k]->PFN]) , tempCharArray , 16);
+				printf("%d\n", memory[16*(currentProcess->PTE[k]->PFN)] );
 				
 			}
 		}
 		
+
+		/* 	file Memory is fix-mapped as follows
+			0-63 is the memory for process 0
+			64-127 is the memory for process 1
+			128-191 is the memory for process 2
+			192-255 is the memory for process 3
+			256-319 is the memory for page tables
+			320 - 335 is for the isCreated 4 int
+		*/					
+		//file memory
+
+		/**typedef struct PageTableEntry{
+				int VPN;
+				int PFN;
+				int allocated;
+				int protection;
+			} PageTableEntry;
+
+			typedef struct Process{
+				//int pid; is the index within the masterStruct
+				PageTableEntry *PTE[4]; //this is page table
+				int page[4][16]
+			} Process;
+
+			typedef struct masterStruct
+			{
+				Process *process[4];
+				int isCreated[4];
+			} masterStruct; */
+			
+		currentProcess = theMasterStruct->process[i];
+		unsigned char tempCharArray[64];
 		
-		for (int j = 0; j < 4; j++) { //for each page
-			//printf("%d\n", currentProcess->PTE[j]->VPN);
+		//store each page all 16
+		for (int k = 0; k < 4; k++) {//for each page
+			//convert to unsigned cha
+			for (int v = 0; v < 16; v++) { //convert the ints to unsigned chars
+				tempCharArray[16*k+v] = currentProcess->page[k][v];
+			}
 		}
+		memcpy ( &(fileMemory[64*i]) , tempCharArray , 16); 	//copy the array/page to file
+		
+		//store each page table
+		unsigned char tempPageTable[16];
+		for (int g = 0; g < 4; g++) {//for each PTE, copy it to the temppage
+			PageTableEntry *localPTE = currentProcess->PTE[g];
+			tempPageTable[4*g+0] = localPTE->VPN;
+			printf("%d just checking\n", localPTE->VPN);
+			tempPageTable[4*g+1] = localPTE->PFN;
+			tempPageTable[4*g+2] = localPTE->allocated;
+			tempPageTable[4*g+3] = localPTE->protection;
+		}
+		memcpy ( &(fileMemory[256+16*i]) , tempPageTable, 16);
+		
+		//store
+		//theMasterStruct->isCreated[i]
+		unsigned char tempCreatedArray;
+		tempCreatedArray = theMasterStruct->isCreated[i];
+		memcpy( &(fileMemory[320+i]), &tempCreatedArray , 1);
+
 	}
-	printStruct();
-	printMemory();
-	/**typedef struct PageTableEntry{
+	//printMemory();
+	//printStruct();
+	printf("about to print file rwer\n");
+	printFileMemory();
+}
+
+int storeFromMemorytoStruct() {
+	return 0;
+
+
+}
+
+
+
+/* switch for map a new page
+*/
+	/**
+	typedef struct PageTableEntry{
 		int VPN;
 		int PFN;
 		int allocated;
@@ -217,90 +303,41 @@ int storeFromStructToMemory() {
 
 	typedef struct Process{
 		//int pid; is the index within the masterStruct
-		int isPageTableInMemory; //PPN if page table is in memory -1 otherwise
-		int isPageInMemory[4]; //PPN if page is in memory, -1 otherwise
 		PageTableEntry *PTE[4]; //this is page table
-		int page[4][16]
+		int page[16][4];
 	} Process;
 
 	typedef struct masterStruct
 	{
 		Process *process[4];
 		int isCreated[4];
-	} masterStruct; */
+	} masterStruct;
+	*/
+int switchStore( int PPNum ) {
+	theMasterStruct = (masterStruct*) malloc(sizeof(masterStruct));
+	for (int i = 0; i < 4; i++) { //for each Process, malloc
+		Process *tempProcess = (Process*)malloc(sizeof(Process));
+		theMasterStruct->process[i] = tempProcess;
+		theMasterStruct->isCreated[i] = -1;
+		
+		isPageTableInMemory[i] = -1;
+		for (int j = 0; j < 4; j++) {//for each pageInMemory, set -1 for start
+			tempProcess->PTE[j]->PFN = -1;
+		}
+		for (int j = 0; j < 4; j++) { //for each PageTableEntry of each process, malloc
+			tempProcess->PTE[j] = malloc(sizeof(PageTableEntry));
+			(*tempProcess).PTE[j]->VPN = -1;
+			(*tempProcess).PTE[j]->PFN = -1;
+			(*tempProcess).PTE[j]->allocated = -1;
+			(*tempProcess).PTE[j]->protection = -1;
+		}
+	}
+	nextFreePage = 0; //start off round robin PF0
+	
 }
 
-int storeFromMemorytoStruct() {
+int switchLoad( int PPNum ) {
 	return 0;
-	
-	//theMasterStruct
-	//unsigned char memory[MEMORY];
-	//unsigned char fileMemory[1000];
-	
-	printf("storeFromMemoryToStruct call\n");
-	for (int i = 0; i < 4; i++) { //for each process
-		printf("got to the loop %d\n", i);
-		int pid = i;
-		Process *currentProcess = theMasterStruct->process[i];
-		int isPageTableInMemory = currentProcess->isPageTableInMemory;
-		
-		if (isPageTableInMemory != -1) { //use register values to get the page tables into active
-			memcpy (  currentProcess->PTE ,  &(memory[16*isPageTableInMemory]) , 16 );
-			//memcpy ( currentProcess->PTE , &(memory[isPageTableInMemory]) , 16 );
-			//printf ("%s\n", memory[isPageTableInMemory]);
-		}
-		
-		for (int k = 0; k < 4; k++) {//load the pages
-			if (currentProcess->isPageInMemory[k] != -1) {//ifpage is in memory
-				printf("got to er for %d %d\n", k, currentProcess->isPageInMemory[k]);
-				printf("%d\n", currentProcess->page[k][9]);
-				printf("%d\n", memory[16*(currentProcess->isPageInMemory[k])] );
-
-				
-				//convert to unsigned cha
-				unsigned char tempCharArray[16];//= malloc(16*sizeof(unsigned char));
-				for (int v = 0; v < 16; v++) { //convert the ints to unsigned chars
-					tempCharArray[v] = currentProcess->page[k][v];
-				}
-				
-				//copy the array to memory
-				memcpy ( &(memory[16*currentProcess->isPageInMemory[k]]) , tempCharArray , 16);
-				printf("%d\n", memory[16*(currentProcess->isPageInMemory[k])] );
-				
-			}
-		}
-	}
-
-}
-
-/**
- * There are three cases here
- * 1) Process does not exist whatsoever
-		- > check if you can get two pages, that is all we need
- * 2) Process exists, but the page we are looking for is not allocated
-		- > check if you can get one page, store it in there
- * 3) Process exists, and the page we are looking for is allocated already
-		- > update permissions
- * return the value appropriate
- */
-int processExists(int pid, int vaddr, masterStruct* theMasterStruct) {
-
-	int VPN = vaddr%16;
-	int isCreated = theMasterStruct->isCreated[pid];
-	
-	if (isCreated == -1) {
-		return 1; //process does not exist
-	}
-	else {
-		int isAllocated = theMasterStruct->process[pid]->PTE[VPN]->allocated;
-		if (isAllocated == -1) {
-			return 2; //process exists but this page is not allocated
-		}
-		else {
-			return 3; //process exists but this page is allocated
-		}
-		
-	}
 }
 
 int map(unsigned char pidTemp, unsigned char vaddrTemp, unsigned char val)
@@ -324,28 +361,45 @@ int map(unsigned char pidTemp, unsigned char vaddrTemp, unsigned char val)
 	int value = val;
 	int protection = val;
 	
-	//processExists returns 1, 2, 3 corresponding to the cases above
-	int processExists1 = processExists(pid, vaddr, theMasterStruct); //run helper function to see if this process exists
-	printf("WE RAN PE %d\n", processExists1);
 	
-	//declare process existence
 	theMasterStruct->isCreated[pid] = 1;
 	
-		//try mapping a page for test
+	//processExists returns 1, 2, 3 corresponding to the cases above
+	int processExists1 = processExists(pid, vaddr, theMasterStruct); //run helper function to see if this process exists
+
+		//declare process existence
+	
+	//try mapping a page for test
 	//start with page table
 	int gottenPPage = getNextFreePage(); //0
-	theMasterStruct->process[tempVPN]->isPageTableInMemory = gottenPPage; //page table goes in 1st gotten pg
-	printf("page table at physical fr %d\n", theMasterStruct->process[tempVPN]->isPageTableInMemory); 
+	isPageTableInMemory[pid] = gottenPPage; //page table goes in 1st gotten pg
+	printf("page table at physical fr %d\n", isPageTableInMemory[pid]); 
 
 	//get the page for datum
 	int gottenPPage2 = getNextFreePage(); //1
-	theMasterStruct->process[pid]->isPageInMemory[PPN] = gottenPPage2;
 	theMasterStruct->process[pid]->PTE[tempVPN] -> VPN =  tempVPN; //PTE's VPN is 2
 	theMasterStruct->process[pid]->PTE[tempVPN] -> PFN = gottenPPage2; //PTE's PFN = 0
 	theMasterStruct->process[pid]->PTE[tempVPN] -> allocated = 1;
 	theMasterStruct->process[pid]->PTE[tempVPN] -> protection = protection;	
 	
-    return 0;
+	return 0;
+			
+			/*
+	
+	switch(processExists1) {
+		case 1 :; // 1) Process does not exist whatsoever- > get two pages
+
+
+		case 2  :;
+			printf("case 2 not ready\n");
+			break;
+		
+		case 3 :;
+			printf("case 3\n");
+			break;
+	}*/
+	
+
 }
 
 int store(unsigned char pidTemp, unsigned char vaddrTemp, unsigned char val)
@@ -360,7 +414,6 @@ int store(unsigned char pidTemp, unsigned char vaddrTemp, unsigned char val)
 	
 	//try storing a value
 	theMasterStruct->process[pid]->page[tempVPN][offset] = value;
-	//theMasterStruct->process[pid]->isPageInMemory[PPN] = gottenPPage;
     return -1;
 }
 
@@ -389,6 +442,15 @@ int main()
     char str[20];
     init();
 
+	map(0, 7,1);
+	store(0, 14, 100);
+	//map(0,18,1);
+	printf("printing files fuckkk\n");
+	
+	storeFromStructToMemory();
+	
+	return 0;
+	
     while (1) //process commands
     {
         char *token;
@@ -461,49 +523,9 @@ int main()
         }
 		
 		
-		//===============================
-	
-	// example values
-	/*
-	int pid = 0;
-	int vaddr = 41;
-	int tempVPN = vaddr/16;
-	int PPN = vaddr/16;
-	int offset = vaddr%16;
-	int value1 = 1;
-	int value2 = 100;
-	int value3 = 0;
-	int protection = 1;
-	
-	map(pid, vaddr, value1);
-	
-	store(pid, vaddr, value2);
-	
-	load(pid, vaddr, value3);
-	*/
 		printf("STOREING\n");
 		storeFromStructToMemory();
 	}
-	/**typedef struct PageTableEntry{
-		int VPN;
-		int PFN;
-		int allocated;
-		int protection;
-	} PageTableEntry;
-
-	typedef struct Process{
-		//int pid; is the index within the masterStruct
-		int isPageTableInMemory; //PPN if page table is in memory -1 otherwise
-		int *isPageInMemory[4]; //PPN if page is in memory, -1 otherwise
-		PageTableEntry *PTE[4]; //this is page table
-		int page[4][16];
-	} Process;
-
-	typedef struct masterStruct
-	{
-		Process *process[4];
-		int isCreated[4];
-	} masterStruct; */
 	
 	return 0;
 }
