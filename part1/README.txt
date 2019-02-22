@@ -13,4 +13,4 @@ This was acceptable for error handling because we could give them recourse for o
 We can, for example, enter 0,map,0,1 but we do not look to handle 0, map, 0, 1
 Just seemed unnecessary for this project - know we cannot handle spaces well
 
-3) 
+3) We are submitting only part 2, as forum posts allows us to do- there will be no part 1 submission

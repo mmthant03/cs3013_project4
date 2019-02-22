@@ -53,6 +53,7 @@ typedef struct Process{
 typedef struct masterStruct
 {
 	Process *process[4];
+	int isCreated[4];
 } masterStruct;
 
 masterStruct *theMasterStruct;
@@ -63,7 +64,9 @@ void init()
 	theMasterStruct = (masterStruct*) malloc(sizeof(masterStruct));
 	for (int i = 0; i < 4; i++) { //for each Process, malloc
 		Process *tempProcess = (Process*)malloc(sizeof(Process));
-		(*theMasterStruct).process[i] = tempProcess;
+		theMasterStruct->process[i] = tempProcess;
+		theMasterStruct->isCreated[i] = -1;
+		
 		tempProcess->isPageTableInMemory = -1;
 		for (int j = 0; j < 4; j++) {//for each pageInMemory, set -1 for start
 			tempProcess->isPageInMemory[j] = -1;
@@ -142,6 +145,7 @@ void printStruct() {
 	typedef struct masterStruct
 	{
 		Process *process[4];
+		int isCreated[4];
 	} masterStruct;
 	*/
 
@@ -222,6 +226,7 @@ int storeFromStructToMemory() {
 	typedef struct masterStruct
 	{
 		Process *process[4];
+		int isCreated[4];
 	} masterStruct; */
 }
 
@@ -268,6 +273,36 @@ int storeFromMemorytoStruct() {
 
 }
 
+/**
+ * There are three cases here
+ * 1) Process does not exist whatsoever
+		- > check if you can get two pages, that is all we need
+ * 2) Process exists, but the page we are looking for is not allocated
+		- > check if you can get one page, store it in there
+ * 3) Process exists, and the page we are looking for is allocated already
+		- > update permissions
+ * return the value appropriate
+ */
+int processExists(int pid, int vaddr, masterStruct* theMasterStruct) {
+
+	int VPN = vaddr%16;
+	int isCreated = theMasterStruct->isCreated[pid];
+	
+	if (isCreated == -1) {
+		return 1; //process does not exist
+	}
+	else {
+		int isAllocated = theMasterStruct->process[pid]->PTE[VPN]->allocated;
+		if (isAllocated == -1) {
+			return 2; //process exists but this page is not allocated
+		}
+		else {
+			return 3; //process exists but this page is allocated
+		}
+		
+	}
+}
+
 int map(unsigned char pidTemp, unsigned char vaddrTemp, unsigned char val)
 {
 	printf("Finding valid process\n");
@@ -281,8 +316,6 @@ int map(unsigned char pidTemp, unsigned char vaddrTemp, unsigned char val)
 			- > update permissions
 	 *
 	*/
-	//int processExists = checkProcessExists(pid); //run helper function to see if this process exists
-	
 	int pid = pidTemp;
 	int vaddr = vaddrTemp;
 	int tempVPN = vaddr/16;
@@ -290,6 +323,13 @@ int map(unsigned char pidTemp, unsigned char vaddrTemp, unsigned char val)
 	int offset = vaddr%16;
 	int value = val;
 	int protection = val;
+	
+	//processExists returns 1, 2, 3 corresponding to the cases above
+	int processExists1 = processExists(pid, vaddr, theMasterStruct); //run helper function to see if this process exists
+	printf("WE RAN PE %d\n", processExists1);
+	
+	//declare process existence
+	theMasterStruct->isCreated[pid] = 1;
 	
 		//try mapping a page for test
 	//start with page table
@@ -444,7 +484,7 @@ int main()
 		printf("STOREING\n");
 		storeFromStructToMemory();
 	}
-	/*typedef struct PageTableEntry{
+	/**typedef struct PageTableEntry{
 		int VPN;
 		int PFN;
 		int allocated;
@@ -462,6 +502,7 @@ int main()
 	typedef struct masterStruct
 	{
 		Process *process[4];
+		int isCreated[4];
 	} masterStruct; */
 	
 	return 0;
