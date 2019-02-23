@@ -14,3 +14,9 @@ We can, for example, enter 0,map,0,1 but we do not look to handle 0, map, 0, 1
 Just seemed unnecessary for this project - know we cannot handle spaces well
 
 3) We are submitting only part 2, as forum posts allows us to do- there will be no part 1 submission
+
+4) The way we handle swapping is
+	- We store values to "file" as soon as they are stored to memory
+	- When we remove a page from memory, we just delete it
+	- Page is already stored correctly
+	
